@@ -3,6 +3,7 @@ export type FirstYearRounding = 'up' | 'half' | 'exact'
 
 // Mirrors the work_profile table (without user_id / updated_at)
 export interface WorkProfile {
+  username: string | null // for logging in instead of the email
   employment_start: string
   weekly_hours: number
   work_days: number[] // ISO weekdays, 1 = Monday … 7 = Sunday

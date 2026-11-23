@@ -6,7 +6,7 @@ import { useAuth } from '@/composables/useAuth'
 const router = useRouter()
 const { signIn } = useAuth()
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
@@ -15,10 +15,10 @@ async function submit() {
   errorMessage.value = ''
   isLoading.value = true
   try {
-    await signIn(email.value, password.value)
+    await signIn(username.value, password.value)
     await router.replace({ name: 'day' })
   } catch {
-    errorMessage.value = 'Login failed. Please check email and password.'
+    errorMessage.value = 'Login failed. Please check username and password.'
   } finally {
     isLoading.value = false
   }
@@ -29,14 +29,30 @@ async function submit() {
   <form class="login" @submit.prevent="submit">
     <h1>Time Tracker</h1>
 
+    <!-- name + autocomplete let iOS save and fill the login -->
     <label class="field">
-      <span>Email</span>
-      <input v-model="email" type="email" autocomplete="email" required />
+      <span>Username</span>
+      <input
+        v-model="username"
+        name="username"
+        type="text"
+        autocomplete="username"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        required
+      />
     </label>
 
     <label class="field">
       <span>Password</span>
-      <input v-model="password" type="password" autocomplete="current-password" required />
+      <input
+        v-model="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+      />
     </label>
 
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
@@ -51,7 +67,7 @@ async function submit() {
 .login {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   max-width: 360px;
   margin: 15vh auto 0;
 }

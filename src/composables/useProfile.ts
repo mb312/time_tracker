@@ -5,6 +5,7 @@ import type { WorkProfile } from '@/types/profile'
 
 // Used until the profile is saved for the first time
 export const DEFAULT_PROFILE: WorkProfile = {
+  username: null,
   employment_start: '2026-05-01',
   weekly_hours: 38.5,
   work_days: [1, 2, 3, 4, 5],

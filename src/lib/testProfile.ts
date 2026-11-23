@@ -2,6 +2,7 @@ import type { WorkProfile } from '@/types/profile'
 
 // Shared test data: the real contract (start 1 May 2026, 38.5 h, 25 days)
 export const testProfile: WorkProfile = {
+  username: null,
   employment_start: '2026-05-01',
   weekly_hours: 38.5,
   work_days: [1, 2, 3, 4, 5],

@@ -16,7 +16,15 @@ function loadSession(): Promise<void> {
   return loadingSession
 }
 
-async function signIn(email: string, password: string): Promise<void> {
+// Accepts a username (looked up in the database) or an email address
+async function signIn(login: string, password: string): Promise<void> {
+  let email = login.trim()
+  if (!email.includes('@')) {
+    const { data, error } = await supabase.rpc('login_email', { login_name: email })
+    if (error || !data) throw new Error('Unknown username')
+    email = data as string
+  }
+
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
 }

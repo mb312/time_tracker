@@ -51,6 +51,14 @@ function toggleWorkday(day: number) {
     : [...days, day].sort((a, b) => a - b)
 }
 
+const USERNAME_PATTERN = /^[a-z0-9._-]{3,30}$/
+
+// Usernames are stored lowercase; an empty field removes the username
+function normalizeUsername(value: string | null): string | null {
+  const trimmed = (value ?? '').trim().toLowerCase()
+  return trimmed || null
+}
+
 function validationError(values: WorkProfile): string {
   if (!values.employment_start || !values.tracking_start) return 'Please fill in both dates.'
   if (values.tracking_start < values.employment_start)
@@ -58,6 +66,8 @@ function validationError(values: WorkProfile): string {
   if (values.weekly_hours <= 0) return 'Weekly hours must be more than 0.'
   if (values.work_days.length === 0) return 'Select at least one workday.'
   if (values.vacation_days_per_year < 0) return 'Vacation days cannot be negative.'
+  if (values.username !== null && !USERNAME_PATTERN.test(values.username))
+    return 'Username: 3–30 characters, only letters, digits, dot, dash or underscore.'
   return ''
 }
 
@@ -67,6 +77,7 @@ function showMessage(text: string, error = false) {
 }
 
 async function save() {
+  form.value.username = normalizeUsername(form.value.username)
   const error = validationError(form.value)
   if (error) return showMessage(error, true)
 
@@ -76,8 +87,12 @@ async function save() {
     isNewProfile.value = false
     message.value = ''
     showToast('Profile saved')
-  } catch {
-    showMessage('Saving failed. Please try again.', true)
+  } catch (saveError) {
+    const isTaken = (saveError as { code?: string }).code === '23505' // unique violation
+    showMessage(
+      isTaken ? 'This username is already taken.' : 'Saving failed. Please try again.',
+      true,
+    )
   } finally {
     isSaving.value = false
   }
@@ -87,6 +102,22 @@ async function save() {
 <template>
   <form class="profile-form" @submit.prevent="save">
     <p v-if="isNewProfile" class="muted">Not saved yet – check the values and save once.</p>
+
+    <section class="card">
+      <h2>Login</h2>
+      <label class="field">
+        <span>Username</span>
+        <input
+          v-model="form.username"
+          type="text"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="e.g. michelle"
+        />
+      </label>
+      <p class="muted small">Log in with this instead of your email. Your email still works too.</p>
+    </section>
 
     <section class="card">
       <h2>Work</h2>
