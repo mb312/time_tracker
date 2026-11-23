@@ -1,0 +1,168 @@
+:root {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --text-muted: #6e6e73;
+  --border: #d2d2d7;
+  --accent: #0a66d8;
+  --accent-text: #ffffff;
+  --danger: #c4231b;
+  --success: #1f7a3a;
+  --warning: #a35a00;
+  --vacation-tint: #fde3d6;
+  --holiday-tint: #e8e8ed;
+  --radius: 10px;
+
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #f5f5f7;
+    --text-muted: #98989d;
+    --border: #38383a;
+    --accent: #3d8bff;
+    --danger: #ff6961;
+    --success: #4cd27a;
+    --warning: #ffb340;
+    --vacation-tint: #4a2a1c;
+    --holiday-tint: #2c2c2e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  padding: calc(env(safe-area-inset-top) + 16px) 16px 24px;
+}
+
+.page--with-tabs {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 80px);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Same look and height for all fields; 16px font keeps iOS Safari from zooming in */
+input,
+select {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 44px;
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* iOS centers date/time values by default */
+input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* Custom arrow, since appearance: none removes the native one */
+select {
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  accent-color: var(--accent);
+}
+
+.chip {
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.chip--active {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.button {
+  padding: 12px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.button--primary {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.button:disabled {
+  opacity: 0.6;
+}
