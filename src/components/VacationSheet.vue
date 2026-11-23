@@ -15,7 +15,7 @@ const props = defineProps<{
   date: string
   daysLeft: number | null // null when the balance isn't known on this screen
 }>()
-const emit = defineEmits<{ close: []; saved: [] }>()
+const emit = defineEmits<{ close: []; saved: [bookedDays: number] }>()
 
 const { profile } = useProfile()
 const { fetchEntries } = useEntries()
@@ -30,6 +30,7 @@ const periodEntries = ref<TimeEntry[]>([])
 const selectedDates = ref<string[]>([])
 const errorMessage = ref('')
 const isSaving = ref(false)
+const isListOpen = ref(false)
 
 const settings = computed(() => profile.value ?? DEFAULT_PROFILE)
 
@@ -99,6 +100,12 @@ function creditedMinutes(target: number): number {
   return Math.round(target * 60 * (isHalfDay.value ? 0.5 : 1))
 }
 
+// Short ranges show their days right away; longer ones fold the list
+const showList = computed(() => isListOpen.value || workdays.value.length <= 5)
+const selectedCount = computed(
+  () => workdays.value.filter((day) => selectedDates.value.includes(day.date)).length,
+)
+
 const bookedDays = computed(() => {
   const minutesPerDay = dailyTargetHours(settings.value) * 60
   return workdays.value
@@ -122,7 +129,7 @@ async function save() {
     await addVacationDays(
       days.map((day) => ({ date: day.date, creditedMin: creditedMinutes(day.target) })),
     )
-    emit('saved')
+    emit('saved', bookedDays.value)
   } catch {
     errorMessage.value = 'Saving failed. Please try again.'
   } finally {
@@ -148,7 +155,17 @@ async function save() {
 
     <p v-if="!rangeError && workdays.length === 0" class="muted">No workdays in this period.</p>
 
-    <ul v-else class="days">
+    <button
+      v-if="workdays.length > 5"
+      type="button"
+      class="list-toggle"
+      @click="isListOpen = !isListOpen"
+    >
+      <span>{{ selectedCount }} of {{ workdays.length }} workdays selected</span>
+      <span class="link-text">{{ isListOpen ? 'Hide days' : 'Edit days' }}</span>
+    </button>
+
+    <ul v-if="workdays.length > 0 && showList" class="days">
       <li v-for="day in workdays" :key="day.date">
         <label class="checkbox">
           <input
@@ -167,7 +184,7 @@ async function save() {
       </li>
     </ul>
 
-    <p v-if="skippedHolidays.length > 0" class="muted">
+    <p v-if="skippedHolidays.length > 0" class="muted small">
       Not counted:
       <template v-for="(holiday, index) in skippedHolidays" :key="holiday.date">
         {{ index > 0 ? ', ' : '' }}{{ holiday.name }} ({{ formatLongDate(holiday.date) }})
@@ -179,7 +196,7 @@ async function save() {
       <span>Half day</span>
     </label>
 
-    <p class="muted">
+    <p class="summary">
       Books {{ formatDays(bookedDays) }} {{ bookedDays === 1 ? 'day' : 'days' }}
       <template v-if="daysLeft !== null">
         · {{ formatDays(daysLeft - bookedDays) }} left after</template
@@ -194,17 +211,34 @@ async function save() {
 .range {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+.list-toggle {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.link-text {
+  color: var(--accent);
 }
 
 .days {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   list-style: none;
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
@@ -214,15 +248,14 @@ async function save() {
 
 .day-text small {
   display: block;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .warning {
-  color: var(--warning);
+  color: var(--vacation);
 }
 
-.error {
-  margin: 0;
-  color: var(--danger);
+.summary {
+  font-weight: 600;
 }
 </style>

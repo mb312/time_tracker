@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Title with ‹ › arrows, used by the week and month screens
+// Title with ‹ › arrows, used by the day, week and month screens
 defineProps<{ title: string; backLabel?: string }>()
 const emit = defineEmits<{ previous: []; next: []; back: [] }>()
 </script>
@@ -7,13 +7,16 @@ const emit = defineEmits<{ previous: []; next: []; back: [] }>()
 <template>
   <header class="period-header">
     <button type="button" class="arrow" aria-label="Previous" @click="emit('previous')">‹</button>
-    <h1 class="title">{{ title }}</h1>
+    <div class="title">
+      <slot>
+        <h1>{{ title }}</h1>
+      </slot>
+      <button v-if="backLabel" type="button" class="back" @click="emit('back')">
+        {{ backLabel }}
+      </button>
+    </div>
     <button type="button" class="arrow" aria-label="Next" @click="emit('next')">›</button>
   </header>
-
-  <button v-if="backLabel" type="button" class="back-link" @click="emit('back')">
-    {{ backLabel }}
-  </button>
 </template>
 
 <style scoped>
@@ -21,27 +24,29 @@ const emit = defineEmits<{ previous: []; next: []; back: [] }>()
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 52px;
 }
 
 .title {
-  margin: 0;
-  font-size: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .arrow {
   width: 44px;
   height: 44px;
-  font-size: 1.6rem;
+  font-size: var(--text-xl);
+  line-height: 1;
   color: var(--text-muted);
   background: none;
   border: none;
 }
 
-.back-link {
-  display: block;
-  margin: 0 auto 8px;
+.back {
+  padding: 2px 0 0;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
   color: var(--accent);
   background: none;
   border: none;

@@ -153,39 +153,42 @@ const presets: { value: PeriodPreset; label: string }[] = [
 .presets {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .range {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .main {
-  gap: 4px;
-  border: 2px solid var(--accent);
+  gap: var(--space-1);
+  background: var(--accent-soft);
+  border-color: transparent;
 }
 
 .main--good {
-  border-color: var(--success);
+  background: var(--good-soft);
 }
 
 .main-value {
-  font-size: 1.8rem;
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
 }
 
 .figures {
   margin: 0;
-  padding: 4px 16px;
+  padding: var(--space-1) var(--space-4);
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
 .figures div {
   display: flex;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -196,10 +199,5 @@ const presets: { value: PeriodPreset; label: string }[] = [
 .figures dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
-}
-
-.error {
-  margin: 0;
-  color: var(--danger);
 }
 </style>

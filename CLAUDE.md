@@ -23,7 +23,7 @@ src/
   main.ts, App.vue, router.ts   app start, layout shell, routes + auth guard
   lib/                          plain helpers: supabase, dates, time, holidays, targets, suggestions, vacation, stats
   types/                        TimeEntry, WorkProfile, DescriptionStat, DailyTotal (mirror tables/views)
-  composables/                  state + data access: useAuth, useProfile, useEntries, useSuggestions, useVacation, useStats
+  composables/                  state + data access: useAuth, useProfile, useEntries, useSuggestions, useVacation, useStats, useToday, useToast, useSwipe
   views/                        one file per screen
   components/                   reusable UI pieces
   styles/main.css               color tokens (light/dark) and base styles
@@ -44,5 +44,8 @@ supabase/migrations/            SQL, run in order in the Supabase SQL editor
 General rules: see `../CLAUDE.md`. Project-specific:
 
 - Dates as `'YYYY-MM-DD'` strings in local time (`lib/dates.ts`), never `toISOString()` for dates
+- UI: only the colour, type (`--text-xs` … `--text-xl`) and spacing (`--space-*`) tokens from `main.css`; screens are flex columns with `gap`, no margins
+- Feedback via `useToast` (with Undo for deletions), never `confirm()`/`alert()`
+- In views use `useToday()` instead of `todayIso()`, so "today" updates when the app is reopened
 - Calculations live in `src/lib` as plain functions with tests; components only display them
 - Prettier: no semicolons, single quotes, width 100

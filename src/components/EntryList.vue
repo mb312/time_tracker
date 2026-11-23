@@ -29,7 +29,6 @@ function hoursOf(entry: TimeEntry): number {
 }
 
 function timeRange(entry: TimeEntry): string {
-  if (entry.kind === 'vacation') return 'Vacation'
   if (!entry.start_time || !entry.end_time) return `${entry.start_time?.slice(0, 5)} – …`
   const nextDay = endsNextDay(entry.start_time, entry.end_time) ? ' (+1)' : ''
   return `${entry.start_time.slice(0, 5)} – ${entry.end_time.slice(0, 5)}${nextDay}`
@@ -37,21 +36,28 @@ function timeRange(entry: TimeEntry): string {
 </script>
 
 <template>
-  <p v-if="entries.length === 0" class="muted empty">No entries yet.</p>
+  <p v-if="entries.length === 0" class="empty muted">No entries yet. Tap + to add one.</p>
 
   <ul v-else class="entry-list">
     <template v-for="row in rows" :key="row.type === 'entry' ? row.entry.id : row.key">
       <li v-if="row.type === 'break'" class="break">
-        Break {{ formatHoursMinutes(row.minutes / 60) }} h
+        Break {{ formatHoursMinutes(row.minutes / 60) }}
       </li>
 
       <li v-else>
         <button type="button" class="entry" @click="emit('select', row.entry)">
-          <span class="entry-time">{{ timeRange(row.entry) }}</span>
-          <span class="entry-hours">{{ formatHoursMinutes(hoursOf(row.entry)) }} h</span>
-          <span v-if="row.entry.description" class="entry-description">
-            {{ row.entry.description }}
-          </span>
+          <template v-if="row.entry.kind === 'vacation'">
+            <span class="tag tag--vacation">Vacation</span>
+            <span class="entry-hours">{{ formatHoursMinutes(hoursOf(row.entry)) }}</span>
+            <span class="entry-description">Tap to remove</span>
+          </template>
+          <template v-else>
+            <span class="entry-time">{{ timeRange(row.entry) }}</span>
+            <span class="entry-hours">{{ formatHoursMinutes(hoursOf(row.entry)) }}</span>
+            <span v-if="row.entry.description" class="entry-description">
+              {{ row.entry.description }}
+            </span>
+          </template>
         </button>
       </li>
     </template>
@@ -64,15 +70,18 @@ function timeRange(entry: TimeEntry): string {
   padding: 0;
   list-style: none;
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .entry {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 2px 12px;
+  align-items: center;
+  gap: 2px var(--space-3);
   width: 100%;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font: inherit;
   text-align: left;
   color: var(--text);
@@ -85,25 +94,36 @@ li:last-child .entry {
   border-bottom: none;
 }
 
+.entry-time,
+.entry-hours {
+  font-variant-numeric: tabular-nums;
+}
+
 .entry-hours {
   font-weight: 600;
 }
 
+.entry .tag {
+  justify-self: start;
+}
+
 .entry-description {
   grid-column: 1 / -1;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .break {
-  padding: 4px 16px;
-  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-xs);
+  text-align: center;
   color: var(--text-muted);
   background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .empty {
-  padding: 24px 0;
+  padding: var(--space-6) 0;
   text-align: center;
 }
 </style>

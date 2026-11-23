@@ -2,35 +2,39 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PeriodHeader from '@/components/PeriodHeader.vue'
+import SummaryCard from '@/components/SummaryCard.vue'
 import { useEntries } from '@/composables/useEntries'
 import { DEFAULT_PROFILE, useProfile } from '@/composables/useProfile'
+import { useSwipe } from '@/composables/useSwipe'
+import { useToday } from '@/composables/useToday'
 import {
   addDays,
   formatDayLabel,
   formatShortRange,
   isoWeekNumber,
+  isoWeekday,
   startOfWeek,
-  todayIso,
 } from '@/lib/dates'
 import { holidayName } from '@/lib/holidays'
 import { targetHoursForDay } from '@/lib/targets'
-import { formatHours, formatHoursMinutes, formatSignedHours } from '@/lib/time'
 import type { TimeEntry } from '@/types/entry'
+
+// Kept while the app is open, so the choice survives switching tabs
+const showWeekend = ref(false)
 
 const route = useRoute()
 const router = useRouter()
 const { fetchEntries } = useEntries()
 const { profile, loadProfile } = useProfile()
+const { today } = useToday(() => loadEntries())
 
-const today = todayIso()
-const monday = computed(() => startOfWeek((route.params.date as string | undefined) || today))
+const page = ref<HTMLElement | null>(null)
+const monday = computed(() => startOfWeek((route.params.date as string | undefined) || today.value))
 const sunday = computed(() => addDays(monday.value, 6))
-const isCurrentWeek = computed(() => monday.value === startOfWeek(today))
-const title = computed(
-  () => `Week ${isoWeekNumber(monday.value)} · ${formatShortRange(monday.value, sunday.value)}`,
-)
+const isCurrentWeek = computed(() => monday.value === startOfWeek(today.value))
 
 const entries = ref<TimeEntry[]>([])
+const isLoading = ref(true)
 const loadError = ref('')
 
 async function loadEntries() {
@@ -38,7 +42,9 @@ async function loadEntries() {
   try {
     entries.value = await fetchEntries(monday.value, sunday.value)
   } catch {
-    loadError.value = 'Could not load entries.'
+    loadError.value = 'Could not load entries. Check your connection and try again.'
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -48,103 +54,117 @@ onMounted(() => {
   if (!profile.value) loadProfile().catch(() => {})
 })
 
-const days = computed(() => {
-  const settings = profile.value ?? DEFAULT_PROFILE
-  return Array.from({ length: 7 }, (_, index) => {
+const settings = computed(() => profile.value ?? DEFAULT_PROFILE)
+
+const allDays = computed(() =>
+  Array.from({ length: 7 }, (_, index) => {
     const date = addDays(monday.value, index)
     const dayEntries = entries.value.filter((entry) => entry.work_date === date)
-    const minutes = dayEntries.reduce((sum, entry) => sum + (entry.duration_min ?? 0), 0)
-
+    const hours = dayEntries.reduce((sum, entry) => sum + (entry.duration_min ?? 0), 0) / 60
     // Days before tracking started have no entries in the app, so they don't count
-    const isTracked = date >= settings.tracking_start
+    const target =
+      date >= settings.value.tracking_start ? targetHoursForDay(date, settings.value) : 0
     return {
       date,
-      hours: minutes / 60,
-      target: isTracked ? targetHoursForDay(date, settings) : 0,
+      hours,
+      target,
+      progress: target > 0 ? Math.min(100, (hours / target) * 100) : 0,
+      isWorkday: settings.value.work_days.includes(isoWeekday(date)),
       holiday: holidayName(date),
       isVacation: dayEntries.some((entry) => entry.kind === 'vacation'),
     }
-  })
+  }),
+)
+
+// Weekend days only when switched on, or when something was worked on them
+const visibleDays = computed(() =>
+  allDays.value.filter((day) => showWeekend.value || day.isWorkday || day.hours > 0),
+)
+const hasHiddenDays = computed(() => visibleDays.value.length < 7)
+
+const title = computed(() => {
+  const lastShown = visibleDays.value.at(-1)?.date ?? sunday.value
+  return `Week ${isoWeekNumber(monday.value)} · ${formatShortRange(monday.value, lastShown)}`
 })
 
-const totalHours = computed(() => days.value.reduce((sum, day) => sum + day.hours, 0))
-const targetHours = computed(() => days.value.reduce((sum, day) => sum + day.target, 0))
-
+const totalHours = computed(() => allDays.value.reduce((sum, day) => sum + day.hours, 0))
+const targetHours = computed(() => allDays.value.reduce((sum, day) => sum + day.target, 0))
 // Balance up to today, so a running week isn't shown as behind for days still to come
 const balanceToDate = computed(() =>
-  days.value
-    .filter((day) => day.date <= today)
+  allDays.value
+    .filter((day) => day.date <= today.value)
     .reduce((sum, day) => sum + day.hours - day.target, 0),
 )
 
 function goToWeek(isoDate: string) {
   router.push({ name: 'week', params: { date: isoDate } })
 }
+
+useSwipe(page, {
+  onLeft: () => goToWeek(addDays(monday.value, 7)),
+  onRight: () => goToWeek(addDays(monday.value, -7)),
+})
 </script>
 
 <template>
-  <PeriodHeader
-    :title="title"
-    :back-label="isCurrentWeek ? undefined : 'Back to this week'"
-    @previous="goToWeek(addDays(monday, -7))"
-    @next="goToWeek(addDays(monday, 7))"
-    @back="goToWeek(today)"
-  />
+  <div ref="page" class="week">
+    <PeriodHeader
+      :title="title"
+      :back-label="isCurrentWeek ? undefined : 'Back to this week'"
+      @previous="goToWeek(addDays(monday, -7))"
+      @next="goToWeek(addDays(monday, 7))"
+      @back="goToWeek(today)"
+    />
 
-  <section class="card total">
-    <span class="muted">Week total</span>
-    <div class="total-row">
-      <strong class="total-hours">{{ formatHours(totalHours) }}</strong>
-      <span class="muted">{{ formatHoursMinutes(totalHours) }}</span>
-    </div>
-    <div class="figures">
-      <span class="muted">Target {{ formatHours(targetHours) }}</span>
-      <span class="muted">Balance to date {{ formatSignedHours(balanceToDate) }}</span>
-    </div>
-  </section>
+    <SummaryCard :hours="totalHours" :target="targetHours" :balance="balanceToDate" />
 
-  <p v-if="loadError" class="error">{{ loadError }}</p>
+    <p v-if="loadError" class="error">{{ loadError }}</p>
 
-  <ul class="days">
-    <li v-for="day in days" :key="day.date">
-      <button
-        type="button"
-        class="day"
-        :class="{ 'day--today': day.date === today, 'day--off': day.target === 0 }"
-        @click="router.push({ name: 'day', params: { date: day.date } })"
-      >
-        <span class="day-label">
-          {{ formatDayLabel(day.date) }}
-          <small v-if="day.holiday" class="muted">{{ day.holiday }}</small>
-          <small v-else-if="day.isVacation" class="muted">Vacation</small>
-        </span>
-        <span class="day-hours">{{ day.hours > 0 ? formatHours(day.hours) : '–' }}</span>
-      </button>
-    </li>
-  </ul>
+    <template v-if="isLoading && entries.length === 0">
+      <div class="skeleton" />
+      <div class="skeleton" />
+      <div class="skeleton" />
+    </template>
+
+    <ul v-else class="days">
+      <li v-for="day in visibleDays" :key="day.date">
+        <button
+          type="button"
+          class="day"
+          :class="{ 'day--today': day.date === today }"
+          @click="router.push({ name: 'day', params: { date: day.date } })"
+        >
+          <span class="day-label">
+            {{ formatDayLabel(day.date) }}
+            <span v-if="day.holiday" class="tag tag--holiday">{{ day.holiday }}</span>
+            <span v-else-if="day.isVacation" class="tag tag--vacation">Vacation</span>
+          </span>
+          <span class="day-hours">{{ day.hours > 0 ? day.hours.toFixed(2) : '–' }}</span>
+          <span v-if="day.target > 0" class="bar" :class="{ 'bar--vacation': day.isVacation }">
+            <span :style="{ width: `${day.progress}%` }" />
+          </span>
+        </button>
+      </li>
+    </ul>
+
+    <button
+      v-if="hasHiddenDays || showWeekend"
+      type="button"
+      class="link-button"
+      @click="showWeekend = !showWeekend"
+    >
+      {{ showWeekend ? 'Hide weekend' : 'Show weekend' }}
+    </button>
+  </div>
 </template>
 
 <style scoped>
-.total {
-  gap: 4px;
-  margin: 4px 0 12px;
-}
-
-.total-row {
+/* Fills the screen so a swipe anywhere changes the week */
+.week {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.total-hours {
-  font-size: 1.8rem;
-}
-
-.figures {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 0.9rem;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 70vh;
 }
 
 .days {
@@ -152,15 +172,18 @@ function goToWeek(isoDate: string) {
   padding: 0;
   list-style: none;
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .day {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
   width: 100%;
-  padding: 14px 16px;
+  padding: var(--space-3) var(--space-4);
   font: inherit;
   text-align: left;
   color: var(--text);
@@ -173,24 +196,26 @@ li:last-child .day {
   border-bottom: none;
 }
 
-.day-label small {
-  display: block;
-  font-size: 0.75rem;
-}
-
-.day--off {
-  color: var(--text-muted);
+.day-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .day--today .day-label {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .day-hours {
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.error {
-  color: var(--danger);
+.day .bar {
+  grid-column: 1 / -1;
+}
+
+.link-button {
+  align-self: center;
 }
 </style>

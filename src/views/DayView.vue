@@ -1,47 +1,69 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AddButton from '@/components/AddButton.vue'
 import DayHeader from '@/components/DayHeader.vue'
 import EntryList from '@/components/EntryList.vue'
 import EntrySheet from '@/components/EntrySheet.vue'
+import SummaryCard from '@/components/SummaryCard.vue'
 import VacationSheet from '@/components/VacationSheet.vue'
 import { useEntries } from '@/composables/useEntries'
 import { DEFAULT_PROFILE, useProfile } from '@/composables/useProfile'
-import { todayIso } from '@/lib/dates'
+import { useSwipe } from '@/composables/useSwipe'
+import { useToast } from '@/composables/useToast'
+import { useToday } from '@/composables/useToday'
+import { addDays } from '@/lib/dates'
 import { holidayName } from '@/lib/holidays'
 import { targetHoursForDay } from '@/lib/targets'
-import { formatHours, formatHoursMinutes } from '@/lib/time'
+import { formatDays } from '@/lib/vacation'
 import type { TimeEntry } from '@/types/entry'
 
 const route = useRoute()
 const router = useRouter()
-const { fetchEntries, deleteEntry } = useEntries()
+const { fetchEntries, deleteEntry, restoreEntry } = useEntries()
 const { profile, loadProfile } = useProfile()
+const { showToast } = useToast()
+const { today } = useToday(() => loadEntries())
 
-const date = computed(() => (route.params.date as string | undefined) || todayIso())
+const page = ref<HTMLElement | null>(null)
+const date = computed(() => (route.params.date as string | undefined) || today.value)
 const entries = ref<TimeEntry[]>([])
+const isLoading = ref(true)
 const loadError = ref('')
 
-const isSheetOpen = ref(false)
+const isEntrySheetOpen = ref(false)
 const isVacationSheetOpen = ref(false)
 const selectedEntry = ref<TimeEntry | null>(null)
 
 const totalHours = computed(
   () => entries.value.reduce((sum, entry) => sum + (entry.duration_min ?? 0), 0) / 60,
 )
-const holiday = computed(() => holidayName(date.value))
 const targetHours = computed(() => targetHoursForDay(date.value, profile.value ?? DEFAULT_PROFILE))
+const holiday = computed(() => holidayName(date.value) ?? undefined)
+// No balance for days still to come
+const balance = computed(() =>
+  date.value <= today.value ? totalHours.value - targetHours.value : null,
+)
 
 async function loadEntries() {
   loadError.value = ''
   try {
     entries.value = await fetchEntries(date.value, date.value)
   } catch {
-    loadError.value = 'Could not load entries.'
+    loadError.value = 'Could not load entries. Check your connection and try again.'
+  } finally {
+    isLoading.value = false
   }
 }
 
-watch(date, loadEntries, { immediate: true })
+watch(
+  date,
+  () => {
+    isLoading.value = true
+    loadEntries()
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   if (!profile.value) loadProfile().catch(() => {})
@@ -51,63 +73,79 @@ function goToDate(isoDate: string) {
   router.push({ name: 'day', params: { date: isoDate } })
 }
 
-function openSheet(entry: TimeEntry | null) {
-  if (entry?.kind === 'vacation') return removeVacation(entry)
-  selectedEntry.value = entry
-  isSheetOpen.value = true
+useSwipe(page, {
+  onLeft: () => goToDate(addDays(date.value, 1)),
+  onRight: () => goToDate(addDays(date.value, -1)),
+})
+
+function openNewEntry() {
+  selectedEntry.value = null
+  isEntrySheetOpen.value = true
 }
 
-async function removeVacation(entry: TimeEntry) {
-  if (!confirm('Remove the vacation on this day?')) return
+function openEntry(entry: TimeEntry) {
+  if (entry.kind === 'vacation') {
+    removeWithUndo(entry, 'Vacation removed')
+    return
+  }
+  selectedEntry.value = entry
+  isEntrySheetOpen.value = true
+}
+
+async function removeWithUndo(entry: TimeEntry, message: string) {
   try {
     await deleteEntry(entry.id)
     await loadEntries()
+    showToast(message, 'Undo', async () => {
+      await restoreEntry(entry)
+      await loadEntries()
+    })
   } catch {
-    loadError.value = 'Removing the vacation failed.'
+    showToast('Deleting failed. Please try again.')
   }
 }
 
-async function onSaved() {
-  isSheetOpen.value = false
+async function onEntrySaved() {
+  isEntrySheetOpen.value = false
+  await loadEntries()
+  showToast('Entry saved')
+}
+
+async function onEntryDeleted(entry: TimeEntry) {
+  isEntrySheetOpen.value = false
+  await removeWithUndo(entry, 'Entry deleted')
+}
+
+async function onVacationSaved(bookedDays: number) {
   isVacationSheetOpen.value = false
   await loadEntries()
+  showToast(`Vacation booked: ${formatDays(bookedDays)} ${bookedDays === 1 ? 'day' : 'days'}`)
 }
 </script>
 
 <template>
-  <DayHeader :date="date" @change="goToDate" />
+  <div ref="page" class="day">
+    <DayHeader :date="date" @change="goToDate" />
+    <SummaryCard :hours="totalHours" :target="targetHours" :balance="balance" :tag="holiday" />
 
-  <section v-if="holiday" class="card holiday">
-    <span class="muted">Public holiday</span>
-    <strong>{{ holiday }}</strong>
-  </section>
-
-  <section class="card total">
-    <span class="muted">{{ date === todayIso() ? 'Today' : 'Total' }}</span>
-    <div class="total-row">
-      <strong class="total-hours">{{ formatHours(totalHours) }}</strong>
-      <span class="muted">{{ formatHoursMinutes(totalHours) }}</span>
-    </div>
-    <span class="muted">Target {{ formatHours(targetHours) }}</span>
-  </section>
-
-  <p v-if="loadError" class="error">{{ loadError }}</p>
-  <EntryList :entries="entries" @select="openSheet" />
-
-  <div class="actions">
-    <button type="button" class="button button--primary" @click="openSheet(null)">
-      + Add entry
-    </button>
-    <button type="button" class="button" @click="isVacationSheetOpen = true">Vacation</button>
+    <p v-if="loadError" class="error">{{ loadError }}</p>
+    <template v-if="isLoading && entries.length === 0">
+      <div class="skeleton" />
+      <div class="skeleton" />
+    </template>
+    <EntryList v-else :entries="entries" @select="openEntry" />
   </div>
 
+  <AddButton @entry="openNewEntry" @vacation="isVacationSheetOpen = true" />
+
   <EntrySheet
-    v-if="isSheetOpen"
+    v-if="isEntrySheetOpen"
     :date="date"
     :entry="selectedEntry"
     :day-entries="entries"
-    @close="isSheetOpen = false"
-    @saved="onSaved"
+    @close="isEntrySheetOpen = false"
+    @saved="onEntrySaved"
+    @deleted="onEntryDeleted"
   />
 
   <VacationSheet
@@ -115,39 +153,16 @@ async function onSaved() {
     :date="date"
     :days-left="null"
     @close="isVacationSheetOpen = false"
-    @saved="onSaved"
+    @saved="onVacationSaved"
   />
 </template>
 
 <style scoped>
-.card {
-  margin-bottom: 12px;
-  gap: 4px;
-}
-
-.holiday {
-  background: var(--bg);
-  border: 1px solid var(--border);
-}
-
-.total-row {
+/* Fills the screen so a swipe anywhere changes the day */
+.day {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.total-hours {
-  font-size: 1.8rem;
-}
-
-.actions {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.error {
-  color: var(--danger);
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 70vh;
 }
 </style>

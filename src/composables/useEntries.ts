@@ -29,6 +29,19 @@ async function deleteEntry(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Puts a deleted entry back (for Undo); it gets a new id
+async function restoreEntry(entry: TimeEntry): Promise<void> {
+  const { error } = await supabase.from('time_entries').insert({
+    work_date: entry.work_date,
+    kind: entry.kind,
+    start_time: entry.start_time,
+    end_time: entry.end_time,
+    credited_min: entry.credited_min,
+    description: entry.description,
+  })
+  if (error) throw error
+}
+
 export function useEntries() {
-  return { fetchEntries, saveEntry, deleteEntry }
+  return { fetchEntries, saveEntry, deleteEntry, restoreEntry }
 }

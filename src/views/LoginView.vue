@@ -59,10 +59,4 @@ async function submit() {
 h1 {
   text-align: center;
 }
-
-.error {
-  margin: 0;
-  color: var(--danger);
-  font-size: 0.9rem;
-}
 </style>

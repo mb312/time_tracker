@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import NumberInput from '@/components/NumberInput.vue'
 import { DEFAULT_PROFILE, useProfile } from '@/composables/useProfile'
+import { useToast } from '@/composables/useToast'
 import { dailyTargetHours } from '@/lib/targets'
 import { formatHours, formatHoursMinutes } from '@/lib/time'
 import type { WorkProfile } from '@/types/profile'
@@ -17,6 +18,7 @@ const WEEKDAYS = [
 ]
 
 const { profile, loadProfile, saveProfile } = useProfile()
+const { showToast } = useToast()
 
 const form = ref<WorkProfile>(copyProfile(DEFAULT_PROFILE))
 const isNewProfile = ref(true)
@@ -72,7 +74,8 @@ async function save() {
   try {
     await saveProfile(form.value)
     isNewProfile.value = false
-    showMessage('Saved.')
+    message.value = ''
+    showToast('Profile saved')
   } catch {
     showMessage('Saving failed. Please try again.', true)
   } finally {
@@ -163,7 +166,7 @@ async function save() {
       </label>
     </section>
 
-    <p v-if="message" :class="isError ? 'error' : 'success'">{{ message }}</p>
+    <p v-if="message" :class="isError ? 'error' : 'good'">{{ message }}</p>
 
     <button class="button button--primary" type="submit" :disabled="isSaving">
       {{ isSaving ? 'Saving…' : 'Save profile' }}
@@ -175,22 +178,12 @@ async function save() {
 .profile-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-3);
 }
 
 .weekdays {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.success {
-  margin: 0;
-  color: var(--success);
-}
-
-.error {
-  margin: 0;
-  color: var(--danger);
+  gap: var(--space-2);
 }
 </style>

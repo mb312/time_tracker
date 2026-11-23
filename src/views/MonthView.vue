@@ -4,22 +4,18 @@ import { useRoute, useRouter } from 'vue-router'
 import MonthCalendar from '@/components/MonthCalendar.vue'
 import PeriodHeader from '@/components/PeriodHeader.vue'
 import PeriodSheet, { type PeriodPreset } from '@/components/PeriodSheet.vue'
-import VacationCard from '@/components/VacationCard.vue'
+import VacationDetailsSheet from '@/components/VacationDetailsSheet.vue'
 import VacationSheet from '@/components/VacationSheet.vue'
 import { DEFAULT_PROFILE, useProfile } from '@/composables/useProfile'
 import { useStats } from '@/composables/useStats'
+import { useSwipe } from '@/composables/useSwipe'
+import { useToast } from '@/composables/useToast'
+import { useToday } from '@/composables/useToday'
 import { useVacation } from '@/composables/useVacation'
-import {
-  addMonths,
-  firstOfMonth,
-  formatLongDate,
-  formatMonthTitle,
-  lastOfMonth,
-  todayIso,
-} from '@/lib/dates'
-import { formatTimeEmployed, summarizePeriod } from '@/lib/stats'
+import { addMonths, firstOfMonth, formatMonthTitle, lastOfMonth } from '@/lib/dates'
+import { summarizePeriod } from '@/lib/stats'
 import { formatHours, formatSignedHours } from '@/lib/time'
-import { calculateVacationBalance } from '@/lib/vacation'
+import { calculateVacationBalance, formatDays } from '@/lib/vacation'
 import type { DailyTotal, TimeEntry } from '@/types/entry'
 
 const route = useRoute()
@@ -27,23 +23,27 @@ const router = useRouter()
 const { profile, loadProfile } = useProfile()
 const { fetchDailyTotals } = useStats()
 const { fetchVacationEntries, toVacationUsages } = useVacation()
+const { showToast } = useToast()
+const { today } = useToday(() => loadData())
 
-const today = todayIso()
-const currentMonth = today.slice(0, 7)
-const month = computed(() => (route.params.month as string | undefined) || currentMonth)
+const page = ref<HTMLElement | null>(null)
+const currentMonth = computed(() => today.value.slice(0, 7))
+const month = computed(() => (route.params.month as string | undefined) || currentMonth.value)
 
 const totals = ref<DailyTotal[]>([])
 const vacationEntries = ref<TimeEntry[]>([])
-const isLoaded = ref(false)
+const isLoading = ref(true)
 const loadError = ref('')
+
 const periodSheetPreset = ref<PeriodPreset | null>(null)
+const isVacationDetailsOpen = ref(false)
 const isVacationSheetOpen = ref(false)
 
 const settings = computed(() => profile.value ?? DEFAULT_PROFILE)
 
 // Everything from the employment start up to the end of this year (or the shown month)
 const loadedUntil = computed(() => {
-  const endOfYear = `${today.slice(0, 4)}-12-31`
+  const endOfYear = `${today.value.slice(0, 4)}-12-31`
   const endOfMonth = lastOfMonth(month.value)
   return endOfMonth > endOfYear ? endOfMonth : endOfYear
 })
@@ -58,9 +58,10 @@ async function loadData() {
     ])
     totals.value = dailyTotals
     vacationEntries.value = vacation
-    isLoaded.value = true
   } catch {
-    loadError.value = 'Could not load your data.'
+    loadError.value = 'Could not load your data. Check your connection and try again.'
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -72,79 +73,110 @@ const monthSummary = computed(() =>
     lastOfMonth(month.value),
     totals.value,
     settings.value,
-    today,
+    today.value,
   ),
 )
-const monthTotal = computed(() => monthSummary.value.workedHours + monthSummary.value.vacationHours)
 const sinceStart = computed(() =>
-  summarizePeriod(settings.value.employment_start, today, totals.value, settings.value, today),
+  summarizePeriod(
+    settings.value.employment_start,
+    today.value,
+    totals.value,
+    settings.value,
+    today.value,
+  ),
 )
-
 const vacationBalance = computed(() =>
-  isLoaded.value
-    ? calculateVacationBalance(
-        settings.value,
-        toVacationUsages(vacationEntries.value, settings.value),
-        today,
-      )
-    : null,
+  calculateVacationBalance(
+    settings.value,
+    toVacationUsages(vacationEntries.value, settings.value),
+    today.value,
+  ),
 )
 
 function goToMonth(value: string) {
   router.push({ name: 'month', params: { month: value } })
 }
 
-async function onVacationSaved() {
+useSwipe(page, {
+  onLeft: () => goToMonth(addMonths(month.value, 1)),
+  onRight: () => goToMonth(addMonths(month.value, -1)),
+})
+
+function openVacationBooking() {
+  isVacationDetailsOpen.value = false
+  isVacationSheetOpen.value = true
+}
+
+async function onVacationSaved(bookedDays: number) {
   isVacationSheetOpen.value = false
   await loadData()
+  showToast(`Vacation booked: ${formatDays(bookedDays)} ${bookedDays === 1 ? 'day' : 'days'}`)
 }
 </script>
 
 <template>
-  <PeriodHeader
-    :title="formatMonthTitle(month)"
-    :back-label="month === currentMonth ? undefined : 'Back to this month'"
-    @previous="goToMonth(addMonths(month, -1))"
-    @next="goToMonth(addMonths(month, 1))"
-    @back="goToMonth(currentMonth)"
-  />
+  <div ref="page" class="month">
+    <PeriodHeader
+      :title="formatMonthTitle(month)"
+      :back-label="month === currentMonth ? undefined : 'Back to this month'"
+      @previous="goToMonth(addMonths(month, -1))"
+      @next="goToMonth(addMonths(month, 1))"
+      @back="goToMonth(currentMonth)"
+    />
 
-  <p v-if="loadError" class="error">{{ loadError }}</p>
+    <p v-if="loadError" class="error">{{ loadError }}</p>
 
-  <div class="summary-cards">
-    <section class="card">
-      <span class="muted">Month</span>
-      <strong class="value">{{ formatHours(monthTotal) }}</strong>
-    </section>
-    <button type="button" class="card balance" @click="periodSheetPreset = 'month'">
-      <span class="muted">Balance to date</span>
-      <strong class="value">{{ formatSignedHours(monthSummary.balanceToDate) }}</strong>
+    <!-- Tapping the strip opens the period check for this month -->
+    <button type="button" class="card strip" @click="periodSheetPreset = 'month'">
+      <span class="stat">
+        <span class="label">Hours</span>
+        <strong>{{ formatHours(monthSummary.workedHours + monthSummary.vacationHours) }}</strong>
+      </span>
+      <span class="stat">
+        <span class="label">Target</span>
+        <strong>{{ formatHours(monthSummary.targetHours) }}</strong>
+      </span>
+      <span class="stat stat--right">
+        <span class="label">Balance</span>
+        <strong :class="monthSummary.balanceToDate >= 0 ? 'good' : 'bad'">
+          {{ formatSignedHours(monthSummary.balanceToDate) }}
+        </strong>
+      </span>
     </button>
+
+    <div v-if="isLoading && totals.length === 0" class="skeleton calendar-placeholder" />
+    <MonthCalendar
+      v-else
+      :month="month"
+      :totals="totals"
+      :profile="settings"
+      @select="(date) => router.push({ name: 'day', params: { date } })"
+    />
+
+    <div class="cards">
+      <button type="button" class="card small-card" @click="periodSheetPreset = 'start'">
+        <span class="label">Since start</span>
+        <strong>{{ formatHours(sinceStart.workedHours) }}</strong>
+        <span class="small" :class="sinceStart.balanceToDate >= 0 ? 'good' : 'bad'">
+          {{ formatSignedHours(sinceStart.balanceToDate) }}
+        </span>
+      </button>
+
+      <div
+        class="card small-card vacation-card"
+        role="button"
+        tabindex="0"
+        @click="isVacationDetailsOpen = true"
+        @keydown.enter="isVacationDetailsOpen = true"
+      >
+        <span class="label">Vacation</span>
+        <strong>{{ formatDays(vacationBalance.left) }} days left</strong>
+        <button type="button" class="link-button add-vacation" @click.stop="openVacationBooking">
+          + Add
+        </button>
+      </div>
+    </div>
   </div>
-
-  <MonthCalendar
-    :month="month"
-    :totals="totals"
-    :profile="settings"
-    @select="(date) => router.push({ name: 'day', params: { date } })"
-  />
-
-  <p class="muted figures">
-    Month target {{ formatHours(monthSummary.targetHours) }} · Balance since start
-    {{ formatSignedHours(sinceStart.balanceToDate) }}
-  </p>
-
-  <button type="button" class="card since-start" @click="periodSheetPreset = 'start'">
-    <span class="muted">Worked since {{ formatLongDate(settings.employment_start) }}</span>
-    <strong class="value">{{ formatHours(sinceStart.workedHours) }}</strong>
-    <span class="muted">{{ formatTimeEmployed(settings.employment_start, today) }} employed</span>
-  </button>
-
-  <VacationCard :balance="vacationBalance" @add="isVacationSheetOpen = true" />
-
-  <button type="button" class="button period-button" @click="periodSheetPreset = 'month'">
-    Period check
-  </button>
 
   <PeriodSheet
     v-if="periodSheetPreset"
@@ -156,55 +188,80 @@ async function onVacationSaved() {
     @close="periodSheetPreset = null"
   />
 
+  <VacationDetailsSheet
+    v-if="isVacationDetailsOpen"
+    :balance="vacationBalance"
+    @close="isVacationDetailsOpen = false"
+    @add="openVacationBooking"
+  />
+
   <VacationSheet
     v-if="isVacationSheetOpen"
     :date="today"
-    :days-left="vacationBalance?.left ?? null"
+    :days-left="vacationBalance.left"
     @close="isVacationSheetOpen = false"
     @saved="onVacationSaved"
   />
 </template>
 
 <style scoped>
-.summary-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 4px 0 12px;
+/* Fills the screen so a swipe anywhere changes the month */
+.month {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 70vh;
 }
 
-.card {
-  gap: 4px;
-  margin-bottom: 12px;
-}
-
-.summary-cards .card {
-  margin-bottom: 0;
-}
-
-/* Cards that open the period check */
-button.card {
+button.card,
+.vacation-card {
   width: 100%;
   font: inherit;
   text-align: left;
   color: var(--text);
-  border: 1px solid var(--border);
+  cursor: pointer;
 }
 
-.value {
-  font-size: 1.4rem;
+.strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: var(--space-3) var(--space-4);
 }
 
-.figures {
-  margin: 8px 0 16px;
-  font-size: 0.85rem;
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
-.period-button {
-  width: 100%;
+.stat--right {
+  align-items: flex-end;
 }
 
-.error {
-  color: var(--danger);
+.label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.small-card {
+  gap: 2px;
+  padding: var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.add-vacation {
+  align-self: flex-start;
+  padding: 0;
+}
+
+.calendar-placeholder {
+  height: 280px;
 }
 </style>
